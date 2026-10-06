@@ -21,11 +21,17 @@ export async function sessionToken(password: string): Promise<string> {
     false,
     ["sign"],
   );
-  const signature = await crypto.subtle.sign("HMAC", key, new TextEncoder().encode("email-automation-session"));
+  const signature = await crypto.subtle.sign(
+    "HMAC",
+    key,
+    new TextEncoder().encode("email-automation-session"),
+  );
   return Buffer.from(signature).toString("hex");
 }
 
-export async function isValidSession(cookieValue: string | undefined): Promise<boolean> {
+export async function isValidSession(
+  cookieValue: string | undefined,
+): Promise<boolean> {
   const password = appPassword();
   if (!password) return !isLockedOut();
   return Boolean(cookieValue) && cookieValue === (await sessionToken(password));
