@@ -1,36 +1,47 @@
-This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-app`](https://nextjs.org/docs/app/api-reference/cli/create-next-app).
+# Email automation
 
-## Getting Started
+Build flows that run when a new email arrives in a Gmail inbox. Flows are drawn with
+[React Flow](https://reactflow.dev/), the UI uses [shadcn/ui](https://ui.shadcn.com/), state lives in
+MongoDB, and a [Vercel Cron Job](https://vercel.com/docs/cron-jobs) polls the inbox.
 
-First, run the development server:
+## Steps
 
-```bash
-npm run dev
-# or
-yarn dev
-# or
-pnpm dev
-# or
-bun dev
-```
+| Step          | Behaviour                                                                             |
+| ------------- | ------------------------------------------------------------------------------------- |
+| New email     | Trigger. Optional "sender contains" and "subject contains" filters.                   |
+| Forward email | Sends the email, with attachments, to the addresses you list, from the Gmail account. |
+| Call an API   | `POST`s your JSON to a URL. The secret is sent as `Authorization: Bearer <secret>`.   |
+| Send in Slack | Dummy. Records what it would post.                                                    |
+| AI extraction | Dummy. Sets `extracted.summary` and `extracted.category` to placeholder values.       |
 
-Open [http://localhost:3000](http://localhost:3000) with your browser to see the result.
+Text fields and the JSON body accept variables such as `{{email.subject}}`. In the JSON body they must
+sit inside quoted strings; values are escaped for you.
 
-You can start editing the page by modifying `app/page.tsx`. The page auto-updates as you edit the file.
+## Setup
 
-This project uses [`next/font`](https://nextjs.org/docs/app/building-your-application/optimizing/fonts) to automatically optimize and load [Geist](https://vercel.com/font), a new font family for Vercel.
+1. `cp .env.example .env.local` and fill it in. The Gmail account needs 2-Step Verification and an
+   [app password](https://myaccount.google.com/apppasswords).
+2. `npm install && npm run dev`
+3. Locally there is no cron. Use **Check inbox now** on the home page, or
+   `curl -H "Authorization: Bearer $CRON_SECRET" localhost:3000/api/cron/poll`.
 
-## Learn More
+On Vercel, set the same variables. `vercel.json` schedules `/api/cron/poll` every minute, which needs a
+Pro plan. Hobby only allows one run per day, so change the schedule to something like `0 9 * * *` there.
 
-To learn more about Next.js, take a look at the following resources:
+## When emails are processed
 
-- [Next.js Documentation](https://nextjs.org/docs) - learn about Next.js features and API.
-- [Learn Next.js](https://nextjs.org/learn) - an interactive Next.js tutorial.
+- New workflows start **off**, and a workflow with an invalid step cannot be switched on.
+- A workflow only sees email received after it was last switched on. The first poll, and every poll
+  while all workflows are off, moves the inbox cursor forward without processing anything.
+- **Test run** performs the flow once on the newest email in the inbox, after a confirmation that lists
+  where it will send. It works while the workflow is off.
+- Each email runs at most once per workflow. A failed step is logged under **Runs** and not retried.
+- Bounces, auto-replies and the app's own forwards are ignored so a flow cannot loop.
 
-You can check out [the Next.js GitHub repository](https://github.com/vercel/next.js) - your feedback and contributions are welcome!
+## Layout
 
-## Deploy on Vercel
-
-The easiest way to deploy your Next.js app is to use the [Vercel Platform](https://vercel.com/new?utm_medium=default-template&filter=next.js&utm_source=create-next-app&utm_campaign=create-next-app-readme) from the creators of Next.js.
-
-Check out our [Next.js deployment documentation](https://nextjs.org/docs/app/building-your-application/deploying) for more details.
+- `lib/workflow/` holds the node types, validation, templating and the executor.
+- `lib/mail/` reads Gmail over IMAP and forwards over SMTP.
+- `lib/poll.ts` is the polling loop; `app/api/cron/poll/route.ts` exposes it to the cron.
+- `app/actions.ts` holds the Server Actions used by the UI; `proxy.ts` is the password gate.
+- `components/workflow/` is the editor.
